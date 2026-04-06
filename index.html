@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MilNav">
+<meta name="theme-color" content="#2D4A22">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180x180.png">
+<title>Military Map Reading & Navigation</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:#F8F7F4;overflow-x:hidden;padding-bottom:72px}
+.mono{font-family:'JetBrains Mono','SF Mono','Menlo','Courier New',monospace}
+.fade-in{animation:fadeIn .4s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* iOS-style tab bar */
+.tab-bar{position:fixed;bottom:0;left:0;right:0;height:64px;background:rgba(248,247,244,.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid #ddd;display:flex;justify-content:center;gap:0;z-index:100;padding-bottom:env(safe-area-inset-bottom)}
+.tab-btn{flex:1;max-width:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;cursor:pointer;color:#999;font-size:10px;font-weight:600;transition:color .2s}
+.tab-btn.active{color:#2D4A22}
+.tab-icon{font-size:22;line-height:1}
+
+/* Reference manual styles */
+.ref-section{background:#fff;border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 6px #0001}
+.ref-header{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;-webkit-user-select:none;user-select:none}
+.ref-header h3{font-size:15px;font-weight:700;color:#2D4A22;margin:0}
+.ref-chevron{font-size:14px;color:#999;transition:transform .3s}
+.ref-chevron.open{transform:rotate(90deg)}
+.ref-body{padding:0 16px 16px;font-size:13.5px;line-height:1.65;color:#333}
+.ref-body p{margin-bottom:10px}
+.ref-body .callout{background:#F0F7ED;border-left:4px solid #2D4A22;border-radius:0 8px 8px 0;padding:12px 14px;margin:12px 0;font-size:13px}
+.ref-body .callout-title{font-weight:700;color:#2D4A22;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.ref-body .warn{background:#FFF8F0;border-left-color:#E67E22}
+.ref-body .warn .callout-title{color:#E67E22}
+.ref-body table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+.ref-body th{background:#2D4A22;color:#fff;padding:8px 10px;text-align:left;font-weight:600}
+.ref-body td{padding:8px 10px;border-bottom:1px solid #eee}
+.ref-body tr:nth-child(even) td{background:#f9f9f9}
+.ref-body .sub{font-size:14px;font-weight:700;color:#3B5323;margin:14px 0 6px}
+</style>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useRef,useCallback,useEffect}=React;
+
+/* ═══════════════════════════════════════
+   SHARED
+   ═══════════════════════════════════════ */
+const GM_DEG=2.19,GM_MILS=Math.round(GM_DEG*(6400/360));
+const d2m=d=>d*6400/360,m2d=m=>m*360/6400,backBrg=d=>(d+180)%360;
+
+/* ═══════════════════════════════════════
+   COLLAPSIBLE SECTION FOR REFERENCE
+   ═══════════════════════════════════════ */
+function Section({title,children,defaultOpen}){
+  const[open,setOpen]=useState(!!defaultOpen);
+  return(<div className="ref-section"><div className="ref-header" onClick={()=>setOpen(!open)}><h3>{title}</h3><span className={"ref-chevron"+(open?" open":"")}>{"\u25B6"}</span></div>{open&&<div className="ref-body fade-in">{children}</div>}</div>);
+}
+
+/* ═══════════════════════════════════════
+   REFERENCE MANUAL (from docx content)
+   ═══════════════════════════════════════ */
+function ReferenceManual(){
+  return(
+  <div style={{maxWidth:680,margin:"0 auto",padding:"16px 12px 80px"}}>
+    {/* Title bar */}
+    <div style={{textAlign:"center",marginBottom:20}}>
+      <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:"#8B0000",marginBottom:4}}>UNCLASSIFIED</div>
+      <h1 style={{fontSize:20,fontWeight:800,color:"#2D4A22",margin:"0 0 4px"}}>MILITARY MAP READING</h1>
+      <h2 style={{fontSize:14,fontWeight:600,color:"#555",margin:0}}>Comprehensive Reference Manual</h2>
+      <div style={{width:50,height:3,background:"#2D4A22",borderRadius:2,margin:"10px auto 0"}}/>
+    </div>
+
+    {/* ── SECTION 1 ── */}
+    <Section title="1. Introduction to Military Map Reading" defaultOpen={true}>
+      <p>Map reading is one of the most fundamental military skills. Every soldier, from the newest recruit to the most experienced sniper, must be competent in using a map to navigate terrain, plan operations, and communicate locations accurately.</p>
+      <p>This reference covers topographic map fundamentals, grid reference systems, terrain association, compass use, military sketching, range cards, and field-expedient navigation. It integrates sniper-level recording, observation, and terrain analysis techniques.</p>
+
+      <div className="sub">Purpose of Military Maps</div>
+      <p>A military map is a graphic representation of a portion of the earth's surface, drawn to scale as seen from above. It provides critical information about terrain, elevation, natural and man-made features, and distances between points. Military maps are essential for planning and conducting troop movements, calling for and adjusting indirect fire, communicating locations, route selection during infiltration, and recording and reporting intelligence information.</p>
+
+      <div className="callout">
+        <div className="callout-title">Sniper Application</div>
+        Navigation is a core selection criterion for sniper candidates. Soldiers must display competence as individual navigators before receiving sniper training. During missions, the team establishes a primary azimuth on insertion and immediately begins information collection and map updates. Maps are used alongside aerial photographs to plan tentative firing positions, routes, and rally points.
+      </div>
+
+      <div className="sub">Types of Military Maps</div>
+      <table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+        <tr><td><strong>Topographic</strong></td><td>Shows terrain relief using contour lines, elevation tints, and conventional symbols. The primary map for land navigation and tactical planning.</td></tr>
+        <tr><td><strong>Planimetric</strong></td><td>Shows horizontal positions of features without relief. Useful for urban operations and infrastructure analysis.</td></tr>
+        <tr><td><strong>Photomap</strong></td><td>Aerial photograph overprinted with grid lines, marginal data, and place names. Used when standard topographic maps are unavailable.</td></tr>
+        <tr><td><strong>Joint Ops Graphic</strong></td><td>Medium-scale map for joint/combined operations planning across services and allied forces.</td></tr>
+        <tr><td><strong>Terrain Model</strong></td><td>Three-dimensional representation for briefings, rehearsals, and mission planning.</td></tr>
+      </tbody></table>
+    </Section>
+
+    {/* ── SECTION 2 ── */}
+    <Section title="2. Reading a Topographic Map">
+      <div className="sub">Marginal Information</div>
+      <p>Before using any map, review its marginal information. This data tells you everything needed to correctly interpret the map: Sheet Name and Number (identifies the map sheet), Series and Edition (how current the data is), Scale (ratio of map to ground distance), Contour Interval (vertical distance between contour lines), Grid Reference Box (instructions for determining coordinates), Legend (symbols and their meanings), Declination Diagram (relationship between true, grid, and magnetic north), and Bar Scales (graphic rulers for measuring distances).</p>
+
+      <div className="sub">Map Scale</div>
+      <p>Scale is the relationship between distance on a map and corresponding distance on the ground. Understanding scale is critical for calculating distances and planning movements.</p>
+      <table><thead><tr><th>Scale</th><th>1 cm =</th><th>Grid Sq on Paper</th><th>Use</th></tr></thead><tbody>
+        <tr><td>1:25,000</td><td>250 m</td><td>40 mm</td><td>Detailed tactical ops, patrol planning</td></tr>
+        <tr><td>1:50,000</td><td>500 m</td><td>20 mm</td><td>Standard military operations</td></tr>
+        <tr><td>1:100,000</td><td>1 km</td><td>10 mm</td><td>Operational planning, vehicle movement</td></tr>
+        <tr><td>1:250,000</td><td>2.5 km</td><td>4 mm *</td><td>Strategic planning, air ops</td></tr>
+      </tbody></table>
+      <p style={{fontSize:11,color:"#888",fontStyle:"italic"}}>* At 1:250,000, grid lines are printed at 10 km intervals, not 1 km. A 1 km subdivision is only 4 mm — manual precision beyond a 4-figure grid is unreliable.</p>
+
+      <div className="sub">Contour Lines and Terrain Features</div>
+      <p>Contour lines connect points of equal elevation. By interpreting contour patterns, a soldier can determine the shape, slope, and relief of terrain without visiting the area.</p>
+
+      <p><strong>Five Major Terrain Features:</strong></p>
+      <p><strong>Hill</strong> — elevation dropping in all directions, shown by concentric closed contour lines. <strong>Ridge</strong> — a line of high ground with steep slope on one or both sides, shown by elongated contour lines. <strong>Valley</strong> — low ground between two ridges, shown by U or V-shaped contour lines with closed ends pointing upstream. <strong>Saddle</strong> — low ground between two high areas, resembling an hourglass in contour lines. <strong>Depression</strong> — low point surrounded by higher ground, shown by closed contours with tick marks pointing inward.</p>
+
+      <p><strong>Three Minor Terrain Features:</strong></p>
+      <p><strong>Draw</strong> — a less-developed valley where contours form a U pointing away from high ground. <strong>Spur</strong> — a short ridge extending from a hill where contours form a U pointing away from low ground. <strong>Cliff</strong> — a vertical change where contour lines merge or touch.</p>
+
+      <p><strong>Two Supplementary Features:</strong></p>
+      <p><strong>Cut</strong> — man-made excavation (roads through hills). <strong>Fill</strong> — man-made raised ground.</p>
+
+      <div className="callout">
+        <div className="callout-title">Sniper Application — Terrain and Observation</div>
+        Snipers divide their observation area into foreground, middle ground, and distant/far ground. Each zone is scanned systematically using short, overlapping eye movements. Terrain features identified on the map directly inform hide position selection, fields of fire, and dead ground analysis.
+      </div>
+    </Section>
+
+    {/* ── SECTION 3 ── */}
+    <Section title="3. Military Grid Reference System">
+      <p>The Military Grid Reference System (MGRS) provides a standardised way to identify any point on the earth's surface. It is the primary coordinate system used by NATO and allied forces for ground operations.</p>
+
+      <div className="sub">Grid Lines</div>
+      <p>Grid lines are the vertical (eastings) and horizontal (northings) lines printed on a military map. Eastings increase left to right; northings increase bottom to top. The grid squares they form are the foundation for all coordinate reporting.</p>
+
+      <div className="sub">4-Figure Grid Reference</div>
+      <p>A 4-figure grid reference identifies a 1 km grid square. Read RIGHT to find the easting line to the LEFT of the target, then read UP to find the northing line BELOW the target. Combine them: easting first, then northing.</p>
+      <div className="callout warn">
+        <div className="callout-title">Memory Aid</div>
+        "Along the corridor, up the stairs" — always give the easting (horizontal) before the northing (vertical).
+      </div>
+
+      <div className="sub">6-Figure Grid Reference</div>
+      <p>A 6-figure grid reference pinpoints a location to within 100 meters. After finding the easting and northing grid lines, estimate tenths within the grid square to add a third digit to each. For example, easting 68 plus 5 tenths = 685, northing 43 plus 7 tenths = 437, giving a 6-figure reference of 685437.</p>
+
+      <div className="sub">8 and 10-Figure Grid References</div>
+      <p>For greater precision, 8-figure references (10 m) and 10-figure references (1 m) are used. These typically require a GPS device or map protractor/romer. Sniper teams routinely use GPS and laser range finders to establish precise grid coordinates.</p>
+
+      <div className="sub">Grid Precision by Map Scale</div>
+      <table><thead><tr><th>Scale</th><th>Grid Sq Size</th><th>Best Manual</th><th>Best with GPS</th></tr></thead><tbody>
+        <tr><td>1:25,000</td><td>40 mm (1 km)</td><td>8-digit (10 m)</td><td>10-digit (1 m)</td></tr>
+        <tr><td>1:50,000</td><td>20 mm (1 km)</td><td>8-digit (10 m)</td><td>10-digit (1 m)</td></tr>
+        <tr><td>1:100,000</td><td>10 mm (1 km)</td><td>6-digit (100 m)</td><td>8-digit (10 m)</td></tr>
+        <tr><td>1:250,000</td><td>4 mm (10 km)*</td><td>4-digit (10 km)</td><td>6-digit (1 km)</td></tr>
+      </tbody></table>
+      <p style={{fontSize:11,color:"#888",fontStyle:"italic"}}>* Grid lines at 1:250,000 are 10 km apart. A 10-digit grid is physically impossible to derive manually from any map — it always requires GPS.</p>
+
+      <div className="callout">
+        <div className="callout-title">Sniper Application — Grid Coordinates in Recording</div>
+        Grid coordinates are recorded on range cards, military sketches, and observation logs. Every panoramic and topographic sketch must include the grid coordinates of the team's position. Every event in the observation record includes grid coordinates. Accurate referencing is essential for calling indirect fire and intelligence reporting.
+      </div>
+    </Section>
+
+    {/* ── SECTION 4 ── */}
+    <Section title="4. Compass Use and Land Navigation">
+      <div className="sub">The Lensatic Compass</div>
+      <p>The lensatic compass consists of a cover with a sighting wire, a floating dial with a luminous arrow, a lens for reading bearings, and a bezel ring for tracking direction changes. It measures direction in degrees (0–360) or mils (0–6400 NATO).</p>
+
+      <div className="sub">Magnetic Azimuth</div>
+      <p>An azimuth is a horizontal angle measured clockwise from a north reference line. In military navigation, azimuths are measured from magnetic north using a compass. To convert between grid azimuths (from the map) and magnetic azimuths (from the compass), the declination diagram must be consulted.</p>
+
+      <div className="sub">Converting Between Grid and Magnetic</div>
+      <p>The G-M angle (grid-magnetic angle) is found on the declination diagram. In Abu Dhabi, the declination is approximately 39 mils (2.19°) East. When converting grid to magnetic with an East G-M angle, subtract. When converting magnetic to grid, add.</p>
+
+      <div className="callout warn">
+        <div className="callout-title">Common Error</div>
+        Getting the G-M conversion backwards is the single most common navigation error. It doubles the angular error (78 mils instead of zero) and can put you hundreds of metres off target. Always verify: Abu Dhabi (East) = Grid to Mag SUBTRACT, Mag to Grid ADD.
+      </div>
+
+      <div className="sub">Navigating with Map and Compass</div>
+      <p>The basic procedure is: orient the map using the compass (accounting for declination), determine your current position, identify the destination, measure the grid azimuth with a protractor, convert to magnetic, set the compass, and begin movement using pace count and terrain association to confirm progress.</p>
+
+      <div className="sub">Route Selection</div>
+      <p>Factors include enemy locations and detection devices, terrain and natural obstacles, weather and visibility, man-made obstacles, available cover and concealment, and dead ground that could mask movement.</p>
+
+      <div className="callout">
+        <div className="callout-title">Sniper Application — Route Selection</div>
+        The sniper team selects primary and alternate routes during mission planning using maps and aerial photographs. En route, checkpoints are selected to track progress. The team moves on routes that best conceal movement from enemy observation. Night-aiming and night-vision equipment are used during reduced visibility. The team's land navigation skills allow rapid traversal of rugged terrain while avoiding detection.
+      </div>
+    </Section>
+
+    {/* ── SECTION 5 ── */}
+    <Section title="5. Range Estimation and Distance">
+      <div className="sub">Map-Based Distance</div>
+      <p>When prominent features exist, an up-to-date map can accurately calculate ranges between objects. This is one of the most reliable tools available and should always be cross-referenced against other methods.</p>
+
+      <div className="sub">100-Meter-Unit-of-Measure Method</div>
+      <p>Visualise 100 m increments on the ground. For ranges up to 500 m, count units to the target. Beyond 500 m, pick a halfway point, count to it, and double. Not very accurate beyond 400 m.</p>
+
+      <div className="sub">Appearance-of-Object Method</div>
+      <table><thead><tr><th>Range</th><th>Appearance</th></tr></thead><tbody>
+        <tr><td>100 m</td><td>Clear in all detail</td></tr>
+        <tr><td>200 m</td><td>Clear detail, skin colour and equipment identifiable</td></tr>
+        <tr><td>300 m</td><td>Clear body outline, face colour good, remaining detail blurred</td></tr>
+        <tr><td>400 m</td><td>Body outline clear, remaining detail blurred</td></tr>
+        <tr><td>500 m</td><td>Body begins to taper, head becomes indistinct</td></tr>
+        <tr><td>600 m</td><td>Body wedge-shaped, no head apparent</td></tr>
+      </tbody></table>
+
+      <div className="sub">Factors Affecting Range Estimation</div>
+      <p><strong>Target:</strong> Regular outlines appear closer. Contrasting targets appear closer. Partly exposed targets appear farther. <strong>Terrain:</strong> Following contours causes overestimation. Smooth surfaces (sand, water, snow) cause underestimation. Downhill = appears farther. Uphill = appears closer. Dead ground = appears closer. <strong>Light:</strong> Clearly visible targets appear closer. Sun behind observer = closer. Sun behind target = farther.</p>
+
+      <div className="sub">Tools for Calculating Ranges</div>
+      <p><strong>Laser Range Finders</strong> provide highly accurate range and should always be used when available. <strong>GPS Systems</strong> provide reliable distance between two known points. <strong>Maps</strong> accurately calculate ranges when prominent features exist. <strong>Mil-Relation Formula</strong> uses the mil-scale reticle in binoculars or scopes: known size of target (mm) divided by mil-scale reading = range (m). Remember: 1 mil = 1 metre at 1,000 metres.</p>
+    </Section>
+
+    {/* ── SECTION 6 ── */}
+    <Section title="6. Military Sketches and Range Cards">
+      <div className="sub">The Range Card</div>
+      <p>The range card represents the target area drawn as seen from above, with distance annotations throughout. It provides a quick-range reference using pre-printed range rings. Sectors can be created using dashed lines for rapid target location.</p>
+      <p>Information includes: name/rank/unit, method of obtaining range, left and right limits of engagement area, major terrain features/roads/structures, ranges/elevation/windage at various distances, temperature and wind (previous entries crossed out when conditions change), and target reference points (azimuth, distance, description).</p>
+
+      <div className="sub">The Military Sketch</div>
+      <p>Military sketches record information about areas, terrain features, or structures not shown on standard maps. They provide intelligence cells with detailed ground-level views otherwise unobtainable.</p>
+
+      <p><strong>Panoramic Sketch</strong> — drawn to scale as seen from the team's perspective. Shows detail about a specific area or structure. Required information: grid coordinates of position, weather, magnetic azimuth through centre, sketch number, scale, date and time.</p>
+
+      <p><strong>Topographic Sketch</strong> — drawn to scale as seen from above. Useful for describing road systems, stream flow, and obstacle locations. Can be used as an overlay on the range card.</p>
+
+      <div className="sub">Guidelines for Drawing Sketches</div>
+      <p><strong>Work whole to part:</strong> establish boundaries first, then large objects (hills, buildings), then smaller details. <strong>Use common shapes:</strong> don't draw every individual tree — use representative shapes unless tactically important. <strong>Draw in perspective:</strong> use vanishing points. Parallel lines receding from the observer converge at vanishing points on, above, or below the horizon depending on slope.</p>
+
+      <div className="callout">
+        <div className="callout-title">Technology Note</div>
+        Digital images on laptops, tablets, or other devices can supplement hand-drawn sketches. However, due to limited reliability of technology and dependence on battery power, snipers must retain the ability to produce manual hand-sketched military drawings. In some cases, a hand-drawn sketch provides more detail and clarity than a photograph.
+      </div>
+
+      <div className="sub">The Observation Log</div>
+      <p>A chronological record of all activities and events in the team's area. Used alongside sketches and range cards, it provides commanders with both the appearance of the area and an accurate activity record. Information includes: sheet number, observer identification, date/time/visibility, grid coordinates, series number, event descriptions, and actions taken.</p>
+    </Section>
+
+    {/* ── SECTION 7 ── */}
+    <Section title="7. Practical Exercises">
+      <div className="sub">Exercise 1: Map Familiarisation</div>
+      <p><strong>Objective:</strong> Correctly identify all marginal information on a 1:50,000 topographic map. <strong>Task:</strong> Students receive a map sheet and must identify and record sheet name/number, scale, contour interval, declination diagram details, legend symbols, and grid reference system. <strong>Standard:</strong> Correctly identify all marginal data within 10 minutes.</p>
+
+      <div className="sub">Exercise 2: Grid References</div>
+      <p><strong>Objective:</strong> Determine 4 and 6-figure grid references for given points. <strong>Task:</strong> Using a map and romer/protractor, determine grid references for 10 designated points. Then, given 10 grid references, plot the corresponding locations. <strong>Standard:</strong> 90% accuracy. All 6-figure references within one grid subdivision (100 m) of the correct answer.</p>
+
+      <div className="sub">Exercise 3: Terrain Association</div>
+      <p><strong>Objective:</strong> Identify the five major and three minor terrain features on both map and ground. <strong>Task:</strong> From a vantage point, correlate visible terrain features with their map representation, identifying each by name and marking it on the map. <strong>Standard:</strong> Correctly identify and label all terrain features within the designated training area.</p>
+
+      <div className="sub">Exercise 4: Compass Navigation</div>
+      <p><strong>Objective:</strong> Navigate a compass course of at least 4 legs, arriving within 100 m of each checkpoint. <strong>Task:</strong> Plan a route using map, protractor, and compass. Convert grid azimuths to magnetic, calculate distances, determine pace counts, and navigate the course. <strong>Standard:</strong> Arrive within 100 m of each checkpoint. Complete within allocated time.</p>
+
+      <div className="sub">Exercise 5: Range Card and Military Sketch</div>
+      <p><strong>Objective:</strong> Produce a range card and panoramic sketch from an assigned position. <strong>Task:</strong> Prepare a range card with sector divisions, distance annotations, and target reference points. Produce a panoramic sketch with all required information annotated. <strong>Standard:</strong> Products must include all mandatory data fields and accurately represent the observed area. Distances within 10% of actual.</p>
+    </Section>
+
+    {/* ── SECTION 8 ── */}
+    <Section title="8. Key Principles and Summary">
+      <table><thead><tr><th>Principle</th><th>Application</th></tr></thead><tbody>
+        <tr><td><strong>Accuracy First</strong></td><td>A wrong grid reference can result in fratricide, missed linkups, or misdirected fires. Double-check all coordinates.</td></tr>
+        <tr><td><strong>Combination Methods</strong></td><td>In combat, perfect conditions rarely exist. Use two or more methods of range estimation and navigation to arrive at the best answer.</td></tr>
+        <tr><td><strong>Maintain Skills</strong></td><td>Technology can fail. Retain manual skills for compass navigation, hand-drawn sketches, and visual range estimation even when digital tools are available.</td></tr>
+        <tr><td><strong>Terrain Association</strong></td><td>Constantly compare the map to the ground. Use prominent terrain features as checkpoints and confirm position at every opportunity.</td></tr>
+        <tr><td><strong>Security</strong></td><td>Protect maps and sketches. They contain information about friendly positions, planned routes, and intelligence value. Destroy or sanitise before risk of capture.</td></tr>
+        <tr><td><strong>Record Everything</strong></td><td>Range cards, sketches, and observation logs create an institutional record vital for follow-on forces and intelligence analysis.</td></tr>
+      </tbody></table>
+
+      <div className="callout">
+        <div className="callout-title">Final Note</div>
+        The map is the soldier's window into terrain he has not yet walked. Master this skill, and it will serve you in every operation, every environment, and every mission you undertake.
+      </div>
+    </Section>
+  </div>);
+}
+
+
+/* ═══════════════════════════════════════
+   LESSON 1: PROTRACTOR
+   ═══════════════════════════════════════ */
+const P_GRID=10,P_CELL=56,P_MAP=P_GRID*P_CELL,P_E0=44,P_N0=78;
+function pToGR(px,py){const e=P_E0+px/P_CELL,n=P_N0+(P_MAP-py)/P_CELL;return{ref:String(Math.floor(e)).padStart(2,"0")+Math.floor((e-Math.floor(e))*10)+String(Math.floor(n)).padStart(2,"0")+Math.floor((n-Math.floor(n))*10),easting:e,northing:n};}
+function pBrg(ax,ay,bx,by){let a=Math.atan2(bx-ax,-(by-ay))*180/Math.PI;if(a<0)a+=360;return a;}
+function pDist(ax,ay,bx,by){const dx=(bx-ax)/P_CELL,dy=(by-ay)/P_CELL;return Math.sqrt(dx*dx+dy*dy);}
+
+const P_STEPS=[
+  {id:"i",title:"Welcome \u2014 Protractor Plotting (Mils)",ins:"NATO 6400-mil system. Degrees as secondary reference. Tap Next."},
+  {id:"a",title:"Step 1 \u2014 Plot Point A",ins:"Tap the map to place your CURRENT POSITION. Read RIGHT then UP.",action:"place_a"},
+  {id:"b",title:"Step 2 \u2014 Plot Point B",ins:"Tap the map to place your DESTINATION.",action:"place_b"},
+  {id:"p",title:"Step 3 \u2014 Read Grid Bearing",ins:"Protractor centred on A, 0/6400 at grid north. Read bearing at the red line.",action:"show_protractor"},
+  {id:"d",title:"Step 4 \u2014 Measure Distance",ins:"At 1:25K each square = 1 km. Distance reported in meters.",action:"show_distance"},
+  {id:"g",title:"Step 5 \u2014 Grid to Magnetic",ins:"Abu Dhabi G-M = 39 mils East. Subtract for grid\u2192magnetic.",action:"show_gm"},
+  {id:"s",title:"Summary",ins:"Review and practise. Under 2 minutes in the field.",action:"show_summary"},
+];
+
+function ProtRing({cx,cy,bM,vis}){
+  if(!vis)return null;const r=130,els=[];
+  for(let m=0;m<6400;m+=50){const rad=((m/6400)*360-90)*Math.PI/180,i4=m%400===0,i2=m%200===0,i1=m%100===0,inner=i4?r-18:i2?r-12:i1?r-8:r-5;
+    els.push(<line key={"t"+m} x1={cx+inner*Math.cos(rad)} y1={cy+inner*Math.sin(rad)} x2={cx+r*Math.cos(rad)} y2={cy+r*Math.sin(rad)} stroke={i4?"#1a1a1a":i2?"#555":i1?"#888":"#bbb"} strokeWidth={i4?2:i2?1:i1?.7:.4}/>);
+    if(i4){const lr=r+13;els.push(<text key={"l"+m} x={cx+lr*Math.cos(rad)} y={cy+lr*Math.sin(rad)} textAnchor="middle" dominantBaseline="central" fontSize={m%1600===0?10:8} fontWeight={m%1600===0?800:600} fill={m%1600===0?"#1a1a1a":"#555"} className="mono">{m===0?"6400":m}</text>);}
+  }
+  [{l:"N",m:0},{l:"E",m:1600},{l:"S",m:3200},{l:"W",m:4800}].forEach(c=>{const rad=((c.m/6400)*360-90)*Math.PI/180;els.push(<text key={"c"+c.m} x={cx+(r-25)*Math.cos(rad)} y={cy+(r-25)*Math.sin(rad)} textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={900} fill="#8B0000" className="mono">{c.l}</text>);});
+  const bRad=bM!==null?((bM/6400)*360-90)*Math.PI/180:0;
+  let arc=null;if(bM!==null){const ar=38,sa=-Math.PI/2,ea=((bM/6400)*360-90)*Math.PI/180,la=(bM/6400)*360>180?1:0;arc=<path d={"M "+(cx+ar*Math.cos(sa))+" "+(cy+ar*Math.sin(sa))+" A "+ar+" "+ar+" 0 "+la+" 1 "+(cx+ar*Math.cos(ea))+" "+(cy+ar*Math.sin(ea))} fill="none" stroke="#CC000055" strokeWidth={2.5}/>;}
+  return(<g style={{opacity:.88}}><circle cx={cx} cy={cy} r={r} fill="#FFFFFFCC" stroke="#333" strokeWidth={1.5}/><line x1={cx-7} y1={cy} x2={cx+7} y2={cy} stroke="#333" strokeWidth={1}/><line x1={cx} y1={cy-7} x2={cx} y2={cy+7} stroke="#333" strokeWidth={1}/><line x1={cx} y1={cy-r+18} x2={cx} y2={cy-r+2} stroke="#CC0000" strokeWidth={2.5}/><polygon points={cx+","+(cy-r+1)+" "+(cx-4)+","+(cy-r+9)+" "+(cx+4)+","+(cy-r+9)} fill="#CC0000"/>{els}{bM!==null&&<line x1={cx} y1={cy} x2={cx+(r+5)*Math.cos(bRad)} y2={cy+(r+5)*Math.sin(bRad)} stroke="#CC0000" strokeWidth={2} strokeDasharray="6,3"/>}{arc}</g>);
+}
+
+function ProtLesson({onBack}){
+  const[step,setStep]=useState(0),[ptA,setPtA]=useState(null),[ptB,setPtB]=useState(null);const svgRef=useRef(null);
+  const cs=P_STEPS[step],sp=step>=3&&ptA,bD=ptA&&ptB?pBrg(ptA.x,ptA.y,ptB.x,ptB.y):null,bM=bD!==null?d2m(bD):null,dist=ptA&&ptB?pDist(ptA.x,ptA.y,ptB.x,ptB.y):null,mM=bM!==null?((bM-GM_MILS+6400)%6400):null,mD=mM!==null?m2d(mM):null,gA=ptA?pToGR(ptA.x,ptA.y):null,gB=ptB?pToGR(ptB.x,ptB.y):null;
+  const hMap=useCallback(e=>{e.preventDefault();if(!svgRef.current)return;const rect=svgRef.current.getBoundingClientRect(),coords=e.touches?{clientX:e.touches[0].clientX,clientY:e.touches[0].clientY}:{clientX:e.clientX,clientY:e.clientY},vW=P_MAP+56,vH=P_MAP+36,x=(coords.clientX-rect.left)*(vW/rect.width)-24,y=(coords.clientY-rect.top)*(vH/rect.height)-8;if(x<0||y<0||x>P_MAP||y>P_MAP)return;if(cs.action==="place_a")setPtA({x,y});else if(cs.action==="place_b")setPtB({x,y});},[cs]);
+  const ok=()=>{if(cs.action==="place_a"&&!ptA)return false;if(cs.action==="place_b"&&!ptB)return false;return true;};
+  const reset=()=>{setStep(0);setPtA(null);setPtB(null);};const ip=cs.action==="place_a"||cs.action==="place_b";
+
+  const gL=[],eL=[],nL=[],mL=[];
+  for(let i=0;i<=P_GRID;i++){gL.push(<line key={"v"+i} x1={i*P_CELL} y1={0} x2={i*P_CELL} y2={P_MAP} stroke="#2D4A2244" strokeWidth={i%5===0?1.5:.7}/>);gL.push(<line key={"h"+i} x1={0} y1={i*P_CELL} x2={P_MAP} y2={i*P_CELL} stroke="#2D4A2244" strokeWidth={i%5===0?1.5:.7}/>);eL.push(<text key={"e"+i} x={i*P_CELL} y={P_MAP+16} textAnchor="middle" fontSize={10} fontWeight={700} fill="#2D4A22" className="mono">{String(P_E0+i).padStart(2,"0")}</text>);nL.push(<text key={"n"+i} x={-10} y={P_MAP-i*P_CELL+3} textAnchor="end" fontSize={10} fontWeight={700} fill="#2D4A22" className="mono">{String(P_N0+i).padStart(2,"0")}</text>);}
+  if(step>=1)for(let i=0;i<P_GRID*10;i++){if(i%10!==0){const p=i*(P_CELL/10);mL.push(<line key={"mv"+i} x1={p} y1={0} x2={p} y2={P_MAP} stroke="#2D4A2210" strokeWidth={.3}/>);mL.push(<line key={"mh"+i} x1={0} y1={p} x2={P_MAP} y2={p} stroke="#2D4A2210" strokeWidth={.3}/>);}}
+  const ter=<g><ellipse cx={280} cy={200} rx={60} ry={45} fill="none" stroke="#8B735544" strokeWidth={.8}/><ellipse cx={280} cy={200} rx={28} ry={18} fill="none" stroke="#8B735566" strokeWidth={.8}/><text x={280} y={204} textAnchor="middle" fontSize={7} fill="#8B7355" fontStyle="italic">Hill 342</text><path d="M 0 390 Q 140 370 280 320 Q 420 270 560 250" fill="none" stroke="#88888866" strokeWidth={3}/><path d="M 400 0 Q 380 100 420 200 Q 440 300 410 400 Q 390 500 420 560" fill="none" stroke="#4A90D966" strokeWidth={1.5} strokeDasharray="4,2"/><text x={435} y={150} fontSize={7} fill="#4A90D9" fontStyle="italic" transform="rotate(10,435,150)">Wadi</text></g>;
+
+  return(<div>
+    <button onClick={onBack} style={{background:"none",border:"none",color:"#2D4A22",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:8}}>{"\u2190"} Lessons</button>
+    <div style={{display:"flex",gap:3,marginBottom:12}}>{P_STEPS.map((_,i)=><div key={i} style={{flex:1,height:4,borderRadius:2,background:i<=step?"#2D4A22":"#ddd"}}/>)}</div>
+    <div style={{background:"#2D4A22",borderRadius:12,padding:"14px 16px",marginBottom:12,color:"#fff"}}><div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",opacity:.7,marginBottom:4}}>Step {step+1}/{P_STEPS.length}</div><h2 style={{fontSize:16,fontWeight:800,margin:"0 0 6px"}}>{cs.title}</h2><p style={{fontSize:13,lineHeight:1.5,margin:0,opacity:.92}}>{cs.ins}</p></div>
+    <div style={{background:"#FFFBE6",borderRadius:10,padding:"8px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4,borderLeft:"4px solid #8B7355"}}><div style={{fontSize:11,fontWeight:700,color:"#8B7355"}}>MILS</div><div className="mono" style={{fontSize:10,color:"#555"}}>N=0/6400 E=1600 S=3200 W=4800</div></div>
+    <div style={{background:"#fff",borderRadius:12,padding:"24px 12px 12px 36px",marginBottom:12,boxShadow:"0 2px 12px #0001",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <svg ref={svgRef} width={P_MAP} height={P_MAP+24} viewBox={"-24 -8 "+(P_MAP+56)+" "+(P_MAP+36)} style={{cursor:ip?"crosshair":"default",display:"block",margin:"0 auto",maxWidth:"100%",touchAction:"none"}} onClick={hMap} onTouchStart={hMap}>
+        <rect x={0} y={0} width={P_MAP} height={P_MAP} fill="#FDFCF6" rx={4}/>{ter}{mL}{gL}{eL}{nL}
+        <g transform={"translate("+(P_MAP-20)+",20)"}><line x1={0} y1={12} x2={0} y2={-12} stroke="#CC0000" strokeWidth={2}/><polygon points="0,-14 -4,-6 4,-6" fill="#CC0000"/><text x={0} y={-18} textAnchor="middle" fontSize={9} fontWeight={900} fill="#CC0000">GN</text></g>
+        {ptA&&<g><circle cx={ptA.x} cy={ptA.y} r={6} fill="#CC0000" stroke="#fff" strokeWidth={2}/><text x={ptA.x+10} y={ptA.y-8} fontSize={11} fontWeight={800} fill="#CC0000" className="mono">A</text><text x={ptA.x+10} y={ptA.y+6} fontSize={8} fill="#CC0000" className="mono">{gA&&gA.ref}</text></g>}
+        {ptB&&<g><circle cx={ptB.x} cy={ptB.y} r={6} fill="#0055AA" stroke="#fff" strokeWidth={2}/><text x={ptB.x+10} y={ptB.y-8} fontSize={11} fontWeight={800} fill="#0055AA" className="mono">B</text><text x={ptB.x+10} y={ptB.y+6} fontSize={8} fill="#0055AA" className="mono">{gB&&gB.ref}</text></g>}
+        {ptA&&ptB&&<line x1={ptA.x} y1={ptA.y} x2={ptB.x} y2={ptB.y} stroke="#CC0000" strokeWidth={1.5} strokeDasharray="8,4"/>}
+        <ProtRing cx={ptA?ptA.x:0} cy={ptA?ptA.y:0} bM={bM} vis={sp}/>
+      </svg>
+    </div>
+    {(ptA||ptB)&&<div style={{display:"grid",gridTemplateColumns:ptA&&ptB?"1fr 1fr":"1fr",gap:8,marginBottom:12}}>{ptA&&<div style={{background:"#FFF5F5",borderRadius:10,padding:12,borderLeft:"4px solid #CC0000"}}><div style={{fontSize:10,fontWeight:700,color:"#CC0000"}}>Point A</div><div className="mono" style={{fontSize:20,fontWeight:800,marginTop:4}}>{gA&&gA.ref}</div></div>}{ptB&&<div style={{background:"#F0F6FF",borderRadius:10,padding:12,borderLeft:"4px solid #0055AA"}}><div style={{fontSize:10,fontWeight:700,color:"#0055AA"}}>Point B</div><div className="mono" style={{fontSize:20,fontWeight:800,marginTop:4}}>{gB&&gB.ref}</div></div>}</div>}
+    {step>=3&&bM!==null&&<div style={{background:"#fff",borderRadius:12,padding:16,marginBottom:12,boxShadow:"0 2px 12px #0001"}}>
+      <div style={{display:"grid",gridTemplateColumns:step>=4&&dist!==null?"1fr 1fr":"1fr",gap:12}}>
+        <div style={{background:"#FFFBE6",borderRadius:10,padding:12}}><div style={{fontSize:10,fontWeight:700,color:"#8B7355",textTransform:"uppercase"}}>Grid Bearing</div><div className="mono" style={{fontSize:26,fontWeight:800}}>{Math.round(bM)} <span style={{fontSize:14}}>mils</span></div><div style={{fontSize:11,color:"#888"}}>({bD.toFixed(1)}{"\u00b0"})</div></div>
+        {step>=4&&dist!==null&&<div style={{background:"#F0FFF0",borderRadius:10,padding:12}}><div style={{fontSize:10,fontWeight:700,color:"#2D6A4F",textTransform:"uppercase"}}>Distance</div><div className="mono" style={{fontSize:26,fontWeight:800}}>{(dist*1000).toFixed(0)} <span style={{fontSize:14}}>m</span></div><div style={{fontSize:11,color:"#888"}}>{dist.toFixed(2)} km</div></div>}
+      </div>
+      {step>=5&&<div style={{marginTop:14}}><div style={{background:"linear-gradient(135deg,#2D4A22,#1B4332)",borderRadius:10,padding:16,color:"#fff"}}>
+        <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:"uppercase",opacity:.8,marginBottom:8}}>Grid {"\u2192"} Magnetic</div>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:9,opacity:.7}}>Grid</div><div className="mono" style={{fontSize:22,fontWeight:800}}>{Math.round(bM)}</div></div><div style={{fontSize:22,opacity:.5}}>{"\u2212"}</div><div style={{textAlign:"center"}}><div style={{fontSize:9,opacity:.7}}>G-M</div><div className="mono" style={{fontSize:22,fontWeight:800}}>{GM_MILS}</div></div><div style={{fontSize:22,opacity:.5}}>=</div><div style={{textAlign:"center"}}><div style={{fontSize:9,opacity:.7}}>Mag</div><div className="mono" style={{fontSize:22,fontWeight:800,color:"#90EE90"}}>{Math.round(mM)}</div></div></div>
+        <div style={{fontSize:11,marginTop:10,opacity:.85,lineHeight:1.5}}>Set <strong>{Math.round(mM)} mils</strong> on compass. G-M = {GM_MILS} mils East.</div>
+      </div></div>}
+    </div>}
+    {step>=6&&<div style={{background:"#fff",borderRadius:12,padding:16,marginBottom:12,boxShadow:"0 2px 8px #0001"}}><h3 style={{fontSize:14,fontWeight:800,color:"#2D4A22",margin:"0 0 10px"}}>Quick Reference</h3>{["1. PLOT position \u2014 RIGHT then UP.","2. PLOT destination.","3. PROTRACTOR on position, 0/6400 = grid north.","4. READ bearing in mils.","5. MEASURE distance (4cm = 1km at 1:25K).","6. CONVERT: \u221239 mils (Abu Dhabi East).","7. SET compass. Back-bearing = \u00b13200 mils.","8. MOVE with pace count."].map((t,i)=><div key={i} style={{fontSize:12,lineHeight:1.55,padding:"6px 0",borderBottom:i<7?"1px solid #f0f0f0":"none"}}>{t}</div>)}</div>}
+    <div style={{display:"flex",gap:8,paddingBottom:12}}>{step>0&&<button onClick={()=>setStep(s=>Math.max(0,s-1))} style={{flex:1,padding:14,background:"#fff",color:"#2D4A22",border:"2px solid #2D4A22",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>{"\u2190"}</button>}{step<P_STEPS.length-1?<button onClick={()=>ok()&&setStep(s=>s+1)} disabled={!ok()} style={{flex:2,padding:14,background:ok()?"#2D4A22":"#ccc",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:ok()?"pointer":"not-allowed"}}>{cs.action==="place_a"&&!ptA?"Tap map for A":cs.action==="place_b"&&!ptB?"Tap map for B":"Next \u2192"}</button>:<button onClick={reset} style={{flex:2,padding:14,background:"#8B0000",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Reset</button>}</div>
+  </div>);
+}
+
+
+/* ═══════════════════════════════════════
+   LESSON 2: RESECTION
+   ═══════════════════════════════════════ */
+const R_GRID=12,R_CELL=48,R_MAP=R_GRID*R_CELL,R_E0=38,R_N0=72;
+function rGR(px,py){const e=R_E0+px/R_CELL,n=R_N0+(R_MAP-py)/R_CELL;return String(Math.floor(e)).padStart(2,"0")+Math.floor((e-Math.floor(e))*10)+String(Math.floor(n)).padStart(2,"0")+Math.floor((n-Math.floor(n))*10);}
+function rBr(fx,fy,tx,ty){let a=Math.atan2(tx-fx,-(ty-fy))*180/Math.PI;if(a<0)a+=360;return a;}
+function intx(x1,y1,a1,x2,y2,a2){const r1=(a1-90)*Math.PI/180,r2=(a2-90)*Math.PI/180,d1c=Math.cos(r1),d1s=Math.sin(r1),d2c=Math.cos(r2),d2s=Math.sin(r2),det=d1c*d2s-d1s*d2c;if(Math.abs(det)<.0001)return null;const t=((x2-x1)*d2s-(y2-y1)*d2c)/det;return{x:x1+t*d1c,y:y1+t*d1s};}
+const LM=[{id:"A",name:"Hilltop Tower",x:120,y:96,color:"#CC0000",gr:"4080"},{id:"B",name:"Mosque Minaret",x:456,y:144,color:"#0055AA",gr:"4778"},{id:"C",name:"Water Tank",x:336,y:432,color:"#7B2D8E",gr:"4575"}];
+const YOU={x:240,y:288};
+
+const R_STEPS=[
+  {id:"i",title:"Resection \u2014 Find Your Position",txt:"Determine your UNKNOWN position using 3 compass bearings to KNOWN points. Tap Next."},
+  {id:"id",title:"Step 1 \u2014 Identify 3 Points",txt:"Tap each landmark on the map to confirm you can see it on the ground AND find it on the map. Aim for ~2133 mils (120\u00b0) spread.",action:"identify"},
+  {id:"b1",title:"Step 2 \u2014 Bearing to A",txt:"Shoot a magnetic bearing to the Hilltop Tower.",action:"shoot",target:0},
+  {id:"b2",title:"Step 3 \u2014 Bearing to B",txt:"Shoot a magnetic bearing to the Mosque Minaret.",action:"shoot",target:1},
+  {id:"b3",title:"Step 4 \u2014 Bearing to C",txt:"Shoot a magnetic bearing to the Water Tank.",action:"shoot",target:2},
+  {id:"cv",title:"Step 5 \u2014 Mag to Grid",txt:"Convert magnetic bearings to grid. Abu Dhabi (East): ADD 39 mils.",action:"convert"},
+  {id:"bk",title:"Step 6 \u2014 Back-Bearings",txt:"Calculate reciprocal: \u00b13200 mils. This gives direction FROM landmark TOWARD you.",action:"back"},
+  {id:"pl",title:"Step 7 \u2014 Plot Lines",txt:"Draw back-bearing lines from each landmark. They converge on your position.",action:"plot"},
+  {id:"fx",title:"Step 8 \u2014 Read Position",txt:"The cocked hat (triangle of error) centre = your position. Small triangle = accurate bearings.",action:"fix"},
+  {id:"sm",title:"Summary",txt:"Review the procedure and tips. Reset to practise.",action:"summary"},
+];
+
+function ResLesson({onBack}){
+  const[step,setStep]=useState(0),[ided,setIded]=useState([false,false,false]),[brgs,setBrgs]=useState([null,null,null]);
+  const[sC,setSC]=useState(false),[sB,setSB]=useState(false),[sL,setSL]=useState(false),[sF,setSF]=useState(false);
+  const cs=R_STEPS[step];
+  const tD=LM.map(l=>rBr(YOU.x,YOU.y,l.x,l.y)),mD=tD.map(d=>(d-GM_DEG+360)%360),mM=mD.map(d=>d2m(d));
+  const gD=mD.map(d=>(d+GM_DEG)%360),gM=gD.map(d=>d2m(d)),bD=gD.map(d=>backBrg(d)),bM=bD.map(d=>d2m(d));
+  const fp=[];for(let i=0;i<3;i++)for(let j=i+1;j<3;j++){const p=intx(LM[i].x,LM[i].y,bD[i],LM[j].x,LM[j].y,bD[j]);if(p)fp.push(p);}
+  const fc=fp.length?{x:fp.reduce((s,p)=>s+p.x,0)/fp.length,y:fp.reduce((s,p)=>s+p.y,0)/fp.length}:YOU;
+  const fGR=rGR(fc.x,fc.y);
+  const ok=()=>{if(cs.action==="identify")return ided.every(Boolean);if(cs.action==="shoot")return brgs[cs.target]!==null;return true;};
+  const reset=()=>{setStep(0);setIded([false,false,false]);setBrgs([null,null,null]);setSC(false);setSB(false);setSL(false);setSF(false);};
+  useEffect(()=>{if(cs.action==="convert")setSC(true);if(cs.action==="back"){setSC(true);setSB(true);}if(cs.action==="plot"){setSC(true);setSB(true);setSL(true);}if(cs.action==="fix"){setSC(true);setSB(true);setSL(true);setSF(true);}},[step]);
+  const gL=[],eL=[],nL=[];
+  for(let i=0;i<=R_GRID;i++){gL.push(<line key={"v"+i} x1={i*R_CELL} y1={0} x2={i*R_CELL} y2={R_MAP} stroke="#2D4A2244" strokeWidth={i%5===0?1.5:.6}/>);gL.push(<line key={"h"+i} x1={0} y1={i*R_CELL} x2={R_MAP} y2={i*R_CELL} stroke="#2D4A2244" strokeWidth={i%5===0?1.5:.6}/>);eL.push(<text key={"e"+i} x={i*R_CELL} y={R_MAP+14} textAnchor="middle" fontSize={9} fontWeight={700} fill="#2D4A22" className="mono">{String(R_E0+i).padStart(2,"0")}</text>);nL.push(<text key={"n"+i} x={-8} y={R_MAP-i*R_CELL+3} textAnchor="end" fontSize={9} fontWeight={700} fill="#2D4A22" className="mono">{String(R_N0+i).padStart(2,"0")}</text>);}
+  const ter=<g><path d="M 0 350 Q 200 340 400 300 Q 500 270 576 260" fill="none" stroke="#aaa" strokeWidth={2.5}/><path d="M 200 0 Q 210 150 230 300 Q 240 400 250 576" fill="none" stroke="#aaa" strokeWidth={2}/><path d="M 50 576 Q 100 450 180 350 Q 250 260 350 200 Q 430 160 500 100" fill="none" stroke="#4A90D944" strokeWidth={2} strokeDasharray="5,3"/><ellipse cx={120} cy={96} rx={50} ry={35} fill="none" stroke="#8B735533" strokeWidth={.7}/></g>;
+
+  return(<div>
+    <button onClick={onBack} style={{background:"none",border:"none",color:"#2D4A22",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:8}}>{"\u2190"} Lessons</button>
+    <div style={{display:"flex",gap:2,marginBottom:12}}>{R_STEPS.map((_,i)=><div key={i} style={{flex:1,height:4,borderRadius:2,background:i<=step?"#2D4A22":"#ddd"}}/>)}</div>
+    <div style={{background:"#2D4A22",borderRadius:12,padding:"14px 16px",marginBottom:12,color:"#fff"}}><div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",opacity:.7,marginBottom:4}}>Step {step+1}/{R_STEPS.length}</div><h2 style={{fontSize:16,fontWeight:800,margin:"0 0 6px"}}>{cs.title}</h2><p style={{fontSize:13,lineHeight:1.5,margin:0,opacity:.92}}>{cs.txt}</p></div>
+    <div style={{background:"#fff",borderRadius:12,padding:"24px 10px 10px 32px",marginBottom:12,boxShadow:"0 2px 12px #0001",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <svg width={R_MAP} height={R_MAP+20} viewBox={"-20 -6 "+(R_MAP+44)+" "+(R_MAP+30)} style={{display:"block",margin:"0 auto",maxWidth:"100%",touchAction:"none"}}>
+        <rect x={0} y={0} width={R_MAP} height={R_MAP} fill="#FDFCF6" rx={4}/>{ter}{gL}{eL}{nL}
+        <g transform={"translate("+(R_MAP-16)+",16)"}><line x1={0} y1={10} x2={0} y2={-10} stroke="#CC0000" strokeWidth={2}/><polygon points="0,-12 -3,-5 3,-5" fill="#CC0000"/><text x={0} y={-15} textAnchor="middle" fontSize={8} fontWeight={900} fill="#CC0000">GN</text></g>
+        {LM.map((l,i)=><g key={l.id} onClick={()=>cs.action==="identify"&&!ided[i]&&(()=>{const n=[...ided];n[i]=true;setIded(n);})()} style={{cursor:cs.action==="identify"&&!ided[i]?"pointer":"default"}}>
+          {cs.action==="identify"&&!ided[i]&&<circle cx={l.x} cy={l.y} r={18} fill="none" stroke={l.color} strokeWidth={1.5} opacity={.4}><animate attributeName="r" from="12" to="22" dur="1.5s" repeatCount="indefinite"/><animate attributeName="opacity" from=".6" to="0" dur="1.5s" repeatCount="indefinite"/></circle>}
+          <circle cx={l.x} cy={l.y} r={10} fill={ided[i]?l.color:"#ddd"} stroke="#fff" strokeWidth={2}/><text x={l.x} y={l.y+1} textAnchor="middle" dominantBaseline="central" fontSize={10} fill="#fff" fontWeight={800}>{l.id}</text><text x={l.x+14} y={l.y-6} fontSize={8} fontWeight={700} fill={l.color}>{l.name}</text></g>)}
+        {sL&&LM.map((l,i)=>{const rad=(bD[i]-90)*Math.PI/180;return<line key={"bl"+i} x1={l.x} y1={l.y} x2={l.x+800*Math.cos(rad)} y2={l.y+800*Math.sin(rad)} stroke={l.color} strokeWidth={1.5} strokeDasharray="6,4" opacity={.7}/>;})}
+        {sF&&<g className="fade-in">{fp.length>=3&&<polygon points={fp.map(p=>p.x+","+p.y).join(" ")} fill="#FFD70033" stroke="#FFD700" strokeWidth={1.5}/>}<circle cx={fc.x} cy={fc.y} r={8} fill="none" stroke="#FF4500" strokeWidth={2.5}/><line x1={fc.x-12} y1={fc.y} x2={fc.x+12} y2={fc.y} stroke="#FF4500" strokeWidth={1.5}/><line x1={fc.x} y1={fc.y-12} x2={fc.x} y2={fc.y+12} stroke="#FF4500" strokeWidth={1.5}/><text x={fc.x+14} y={fc.y-10} fontSize={10} fontWeight={800} fill="#FF4500" className="mono">YOU</text><text x={fc.x+14} y={fc.y+4} fontSize={8} fill="#FF4500" className="mono">{fGR}</text></g>}
+      </svg>
+    </div>
+    {cs.action==="identify"&&<div className="fade-in" style={{background:"#fff",borderRadius:12,padding:14,marginBottom:12,boxShadow:"0 2px 8px #0001"}}><div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Tap each landmark on the map:</div>{LM.map((l,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<2?"1px solid #f0f0f0":"none"}}><div style={{width:24,height:24,borderRadius:"50%",background:ided[i]?l.color:"#ddd",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:800}}>{l.id}</div><div style={{flex:1,fontSize:13,color:ided[i]?"#333":"#999"}}>{l.name}</div><div className="mono" style={{fontSize:11,fontWeight:700,color:ided[i]?"#2D6A4F":"#ccc"}}>{ided[i]?"\u2713":"..."}</div></div>)}</div>}
+    {cs.action==="shoot"&&<div className="fade-in" style={{background:"#fff",borderRadius:12,padding:14,marginBottom:12,boxShadow:"0 2px 8px #0001"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><div style={{width:32,height:32,borderRadius:"50%",background:LM[cs.target].color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:800}}>{LM[cs.target].id}</div><div><div style={{fontSize:14,fontWeight:700}}>{LM[cs.target].name}</div></div></div>
+      {brgs[cs.target]===null?<button onClick={()=>{const n=[...brgs];n[cs.target]=mM[cs.target];setBrgs(n);}} style={{width:"100%",padding:14,background:LM[cs.target].color,color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>{"\uD83E\uDDED"} Shoot Bearing</button>
+      :<div style={{background:"#F0FFF0",borderRadius:10,padding:14,textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,color:"#2D6A4F",textTransform:"uppercase"}}>Magnetic Bearing</div><div className="mono" style={{fontSize:28,fontWeight:800,marginTop:4}}>{Math.round(brgs[cs.target])} <span style={{fontSize:14}}>mils</span></div><div style={{fontSize:11,color:"#888"}}>({mD[cs.target].toFixed(1)}{"\u00b0"})</div></div>}
+    </div>}
+    {(sC||sB)&&<div className="fade-in" style={{background:"#fff",borderRadius:12,padding:14,marginBottom:12,boxShadow:"0 2px 8px #0001"}}><h3 style={{fontSize:13,fontWeight:800,color:"#2D4A22",margin:"0 0 10px"}}>Bearing Table</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}><thead><tr style={{background:"#2D4A22",color:"#fff"}}><th style={{padding:"8px 6px",textAlign:"left"}}>Pt</th><th style={{padding:"8px 6px",textAlign:"center"}}>Mag</th>{sC&&<th style={{padding:"8px 6px",textAlign:"center"}}>Grid</th>}{sB&&<th style={{padding:"8px 6px",textAlign:"center"}}>Back</th>}</tr></thead><tbody>{LM.map((l,i)=><tr key={i} style={{background:i%2===0?"#f8f8f8":"#fff"}}><td style={{padding:"8px 6px",fontWeight:700,color:l.color}}>{l.id}</td><td className="mono" style={{padding:"8px 6px",textAlign:"center"}}>{Math.round(mM[i])}</td>{sC&&<td className="mono" style={{padding:"8px 6px",textAlign:"center",fontWeight:700}}>{Math.round(gM[i])}</td>}{sB&&<td className="mono" style={{padding:"8px 6px",textAlign:"center",fontWeight:700,color:"#8B0000"}}>{Math.round(bM[i])}</td>}</tr>)}</tbody></table></div></div>}
+    {sF&&<div className="fade-in" style={{background:"linear-gradient(135deg,#FF4500,#CC3700)",borderRadius:12,padding:16,marginBottom:12,color:"#fff",textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",opacity:.8}}>Position Fix</div><div className="mono" style={{fontSize:32,fontWeight:800,marginTop:6}}>{fGR}</div></div>}
+    {cs.action==="summary"&&<div className="fade-in" style={{background:"#fff",borderRadius:12,padding:16,marginBottom:12,boxShadow:"0 2px 8px #0001"}}><h3 style={{fontSize:14,fontWeight:800,color:"#2D4A22",margin:"0 0 10px"}}>Quick Reference</h3>{["1. IDENTIFY 3 features.","2. SHOOT magnetic bearings.","3. CONVERT mag\u2192grid (+39 mils).","4. BACK-BEARINGS (\u00b13200 mils).","5. PLOT from each landmark.","6. READ position at cocked hat centre.","","Tips: Spread features ~2133 mils apart. Cocked hat > 1 grid sq = re-shoot. Always use 3 bearings, not 2."].map((t,i)=>t?<div key={i} style={{fontSize:12,lineHeight:1.55,padding:"6px 0",borderBottom:i<5?"1px solid #f0f0f0":"none"}}>{t}</div>:null)}</div>}
+    <div style={{display:"flex",gap:8,paddingBottom:12}}>{step>0&&<button onClick={()=>setStep(s=>Math.max(0,s-1))} style={{flex:1,padding:14,background:"#fff",color:"#2D4A22",border:"2px solid #2D4A22",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>{"\u2190"}</button>}{step<R_STEPS.length-1?<button onClick={()=>ok()&&setStep(s=>s+1)} disabled={!ok()} style={{flex:2,padding:14,background:ok()?"#2D4A22":"#ccc",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:ok()?"pointer":"not-allowed"}}>{cs.action==="identify"&&!ided.every(Boolean)?"Tap landmarks":cs.action==="shoot"&&brgs[cs.target]===null?"Shoot bearing":"Next \u2192"}</button>:<button onClick={reset} style={{flex:2,padding:14,background:"#8B0000",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Reset</button>}</div>
+  </div>);
+}
+
+
+/* ═══════════════════════════════════════
+   LESSON MENU
+   ═══════════════════════════════════════ */
+function LessonMenu({onSelect}){
+  return(<div style={{maxWidth:680,margin:"0 auto",padding:"24px 16px 80px"}}>
+    <div style={{textAlign:"center",marginBottom:28}}><div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:"#8B7355",marginBottom:6}}>INTERACTIVE TRAINING</div><h1 style={{fontSize:22,fontWeight:800,color:"#2D4A22",margin:"0 0 4px"}}>GUIDED LESSONS</h1><div style={{width:50,height:3,background:"#2D4A22",borderRadius:2,margin:"10px auto 0"}}/></div>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <button onClick={()=>onSelect("prot")} style={{background:"#fff",border:"2px solid #2D4A2222",borderRadius:16,padding:18,cursor:"pointer",textAlign:"left",boxShadow:"0 2px 10px #0001",display:"flex",gap:14,alignItems:"center"}}><div style={{width:50,height:50,borderRadius:12,background:"linear-gradient(135deg,#2D4A22,#1B4332)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:24}}>{"\uD83E\uDDED"}</div><div><div style={{fontSize:10,fontWeight:700,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Lesson 1</div><div style={{fontSize:15,fontWeight:800,color:"#2D4A22",marginBottom:3}}>Protractor Plotting</div><div style={{fontSize:12,color:"#666",lineHeight:1.4}}>Plot grid refs, measure bearings, calculate distance, G-M conversion. 7 steps.</div></div></button>
+      <button onClick={()=>onSelect("res")} style={{background:"#fff",border:"2px solid #2D4A2222",borderRadius:16,padding:18,cursor:"pointer",textAlign:"left",boxShadow:"0 2px 10px #0001",display:"flex",gap:14,alignItems:"center"}}><div style={{width:50,height:50,borderRadius:12,background:"linear-gradient(135deg,#CC3700,#8B0000)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:24}}>{"\uD83D\uDCCD"}</div><div><div style={{fontSize:10,fontWeight:700,color:"#8B7355",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Lesson 2</div><div style={{fontSize:15,fontWeight:800,color:"#CC3700",marginBottom:3}}>Resection (3-Point Fix)</div><div style={{fontSize:12,color:"#666",lineHeight:1.4}}>Find your position using compass bearings to 3 known landmarks. 10 steps.</div></div></button>
+    </div>
+    <div style={{marginTop:24,textAlign:"center",fontSize:11,color:"#aaa",lineHeight:1.6}}>NATO 6400-mil system {"\u2022"} G-M: Abu Dhabi ~39 mils East<br/>UNCLASSIFIED \u2014 For training use</div>
+  </div>);
+}
+
+
+/* ═══════════════════════════════════════
+   MAIN APP WITH TAB BAR
+   ═══════════════════════════════════════ */
+function App(){
+  const[tab,setTab]=useState("lessons"); // "lessons" | "reference"
+  const[lesson,setLesson]=useState(null); // null | "prot" | "res"
+
+  const switchTab=(t)=>{setTab(t);setLesson(null);window.scrollTo(0,0);};
+
+  return(<div>
+    {/* Content area */}
+    {tab==="lessons"&&!lesson&&<LessonMenu onSelect={l=>setLesson(l)}/>}
+    {tab==="lessons"&&lesson==="prot"&&<div style={{maxWidth:680,margin:"0 auto",padding:"16px 12px 80px"}}><ProtLesson onBack={()=>setLesson(null)}/></div>}
+    {tab==="lessons"&&lesson==="res"&&<div style={{maxWidth:680,margin:"0 auto",padding:"16px 12px 80px"}}><ResLesson onBack={()=>setLesson(null)}/></div>}
+    {tab==="reference"&&<ReferenceManual/>}
+
+    {/* iOS-style tab bar */}
+    <div className="tab-bar">
+      <button className={"tab-btn"+(tab==="lessons"?" active":"")} onClick={()=>switchTab("lessons")}>
+        <span className="tab-icon">{"\uD83E\uDDED"}</span>
+        <span>Lessons</span>
+      </button>
+      <button className={"tab-btn"+(tab==="reference"?" active":"")} onClick={()=>switchTab("reference")}>
+        <span className="tab-icon">{"\uD83D\uDCD6"}</span>
+        <span>Reference</span>
+      </button>
+    </div>
+  </div>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+
+<!-- Service Worker Registration & Install Banner -->
+<script>
+// Register service worker for offline caching
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('sw.js')
+      .then(function(reg) { console.log('SW registered:', reg.scope); })
+      .catch(function(err) { console.log('SW failed:', err); });
+  });
+}
+
+// Smart install banner for iOS
+(function() {
+  // Don't show if already in standalone mode (added to home screen)
+  var isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  // Don't show if already dismissed
+  var dismissed = localStorage.getItem('milnav-install-dismissed');
+  
+  if (!isStandalone && !dismissed) {
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    // Wait for page to settle
+    setTimeout(function() {
+      var banner = document.createElement('div');
+      banner.id = 'install-banner';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#2D4A22,#1B4332);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;font-family:-apple-system,system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,0.3);animation:fadeIn .4s ease';
+      
+      var icon = document.createElement('div');
+      icon.style.cssText = 'width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0';
+      icon.textContent = '\uD83E\uDDED';
+      
+      var text = document.createElement('div');
+      text.style.cssText = 'flex:1';
+      text.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:2px">Install MilNav</div><div style="font-size:11px;opacity:0.8">' + 
+        (isIOS ? 'Tap <span style="font-size:14px">\u2B06</span> Share then <strong>"Add to Home Screen"</strong>' : 'Add to home screen for app-like experience') + 
+        '</div>';
+      
+      var close = document.createElement('button');
+      close.style.cssText = 'background:rgba(255,255,255,0.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center';
+      close.textContent = '\u2715';
+      close.onclick = function() {
+        banner.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+        banner.style.transform = 'translateY(-100%)';
+        banner.style.opacity = '0';
+        setTimeout(function() { banner.remove(); }, 300);
+        localStorage.setItem('milnav-install-dismissed', '1');
+        // Adjust body padding
+        document.body.style.paddingTop = '0';
+      };
+      
+      banner.appendChild(icon);
+      banner.appendChild(text);
+      banner.appendChild(close);
+      document.body.prepend(banner);
+      document.body.style.paddingTop = '68px';
+    }, 1500); // Show after 1.5s so content loads first
+  }
+})();
+</script>
+</body>
+</html>
